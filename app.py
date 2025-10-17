@@ -901,7 +901,11 @@ def user_risk_analysis(user_id):
         user_id: The ID of the user on which we perform risk analysis.
 
     Returns:
-        A float number score showing the risk associated with this user. There are no strict rules or bounds to this score, other than that a score of less than 1.0 means no risk, 1.0 to 3.0 is low risk, 3.0 to 5.0 is medium risk and above 5.0 is high risk. (An upper bound of 5.0 is applied to this score elsewhere in the codebase) 
+        A float number score showing the risk associated with this user.
+        There are no strict rules or bounds to this score,
+        other than that a score of less than 1.0 means no risk,
+        1.0 to 3.0 is low risk, 3.0 to 5.0 is medium risk and above 5.0 is high risk.
+        (An upper bound of 5.0 is applied to this score elsewhere in the codebase)
         
         You will be able to check the scores by logging in with the administrator account:
             username: admin
@@ -911,7 +915,7 @@ def user_risk_analysis(user_id):
 
     score = 0
 
-    return score;
+    return score
 
 
 # Task 3.3
@@ -941,21 +945,23 @@ def moderate_content(content):
     tier2_replacement_str = "[content removed due to spam/scam policy]"
     tier3_substitute = "*"
     link_substitute = "[link removed]"
-    moderated_content = content
-    score = 0
 
+    # apply tier 1 and 2 word filter on original content
     tier1_filter_res = tier1_filter(content)
     tier2_filter_res = tier2_filter(content)
 
-    # apply tier 1 and 2 word filter, if fits, return immediately
-    if tier1_filter_res:
-        moderated_content = tier1_replacement_str
-        score = 5.0
-        return moderated_content, score
-    elif tier2_filter_res:
-        moderated_content = tier2_replacement_str
-        score = 5.0
-        return moderated_content, score
+    # normalize leet speak content before filters
+    normalized = normalize_leet(content)
+
+    # apply tier 1 and 2 word filter on normalized content
+    tier1_filter_res_norm = tier1_filter(normalized)
+    tier2_filter_res_norm = tier2_filter(normalized)
+
+    # if any fits, return immediately
+    if tier1_filter_res or tier1_filter_res_norm:
+        return tier1_replacement_str, 5.0
+    elif tier2_filter_res or tier2_filter_res_norm:
+        return tier2_replacement_str, 5.0
 
     # apply tier 3 word list
     moderated_content, score = tier3_filter(content, tier3_substitute)
@@ -1030,7 +1036,21 @@ def capitalization_filter(content, score):
         return content, score + 0.5
 
     return content, score
-    
+
+LEET_MAP = {
+    '4': 'a',
+    '@': 'a',
+    '3': 'e',
+    '1': 'i',
+    '!': 'i',
+    '0': 'o',
+    '5': 's',
+    '$': 's',
+    '7': 't'
+}
+
+def normalize_leet(content):
+    return ''.join(LEET_MAP.get(c.lower(), c) for c in content)
 
 
 if __name__ == '__main__':
