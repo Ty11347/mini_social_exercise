@@ -9,7 +9,7 @@ import re
 from datetime import datetime
 
 app = Flask(__name__)
-app.secret_key = '123456789' 
+app.secret_key = '123456789'
 DATABASE = 'database.sqlite'
 
 # Load censorship data
@@ -58,19 +58,19 @@ def query_db(query, args=(), one=False, commit=False):
     dictionary, or None. Also handles write operations.
     """
     db = get_db()
-    
+
     # Using 'with' on a connection object implicitly handles transactions.
     # The 'with' statement will automatically commit if successful, 
     # or rollback if an exception occurs. This is safer.
     try:
         with db:
             cur = db.execute(query, args)
-        
+
         # For SELECT statements, fetch the results after the transaction block
         if not commit:
             rv = cur.fetchall()
             return (rv[0] if rv else None) if one else rv
-        
+
         # For write operations, we might want the cursor to get info like lastrowid
         return cur
 
@@ -104,7 +104,7 @@ def feed():
         page = 1
     sort = request.args.get('sort', 'new').lower()
     show = request.args.get('show', 'all').lower()
-    
+
     # Define how many posts to show per page
     POSTS_PER_PAGE = 10
     offset = (page - 1) * POSTS_PER_PAGE
@@ -192,8 +192,8 @@ def feed():
         })
 
     #  4. Render Template with Pagination Info 
-    return render_template('feed.html.j2', 
-                           posts=posts_data, 
+    return render_template('feed.html.j2',
+                           posts=posts_data,
                            current_sort=sort,
                            current_show=show,
                            page=page, # Pass current page number
@@ -230,8 +230,8 @@ def add_post():
 
     # Redirect back to the main feed to see the new post
     return redirect(url_for('feed'))
-    
-    
+
+
 @app.route('/posts/<int:post_id>/delete', methods=['POST'])
 def delete_post(post_id):
     """Handles deleting a post."""
@@ -271,7 +271,7 @@ def delete_post(post_id):
 @app.route('/u/<username>')
 def user_profile(username):
     """Displays a user's profile page with moderated bio, posts, and latest comments."""
-    
+
     user_raw = query_db('SELECT * FROM users WHERE username = ?', (username,), one=True)
     if not user_raw:
         abort(404)
@@ -302,7 +302,7 @@ def user_profile(username):
     #  NEW: CHECK FOLLOW STATUS 
     is_currently_following = False # Default to False
     current_user_id = session.get('user_id')
-    
+
     # We only need to check if a user is logged in
     if current_user_id:
         follow_relation = query_db(
@@ -314,14 +314,14 @@ def user_profile(username):
             is_currently_following = True
     # --
 
-    return render_template('user_profile.html.j2', 
-                           user=user, 
-                           posts=posts, 
+    return render_template('user_profile.html.j2',
+                           user=user,
+                           posts=posts,
                            comments=comments,
-                           followers_count=followers_count, 
+                           followers_count=followers_count,
                            following_count=following_count,
                            is_following=is_currently_following)
-    
+
 
 @app.route('/u/<username>/followers')
 def user_followers(username):
@@ -352,7 +352,7 @@ def user_following(username):
 @app.route('/posts/<int:post_id>')
 def post_detail(post_id):
     """Displays a single post and its comments, with content moderation applied."""
-    
+
     post_raw = query_db('''
         SELECT p.id, p.content, p.created_at, u.username, u.id as user_id
         FROM posts p
@@ -381,7 +381,7 @@ def post_detail(post_id):
 
     #  Fetch and Moderate Comments 
     comments_raw = query_db('SELECT c.id, c.content, c.created_at, u.username, u.id as user_id FROM comments c JOIN users u ON c.user_id = u.id WHERE c.post_id = ? ORDER BY c.created_at ASC', (post_id,))
-    
+
     comments = [] # Create a new list for the moderated comments
     for comment_raw in comments_raw:
         comment = dict(comment_raw) # Convert to a dictionary
@@ -445,7 +445,7 @@ def signup():
         finally:
             cur.close()
             db.close()
-            
+
     return render_template('signup.html.j2')
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -470,7 +470,7 @@ def login():
         else:
             # User does not exist or password was incorrect.
             flash('Invalid username or password.', 'danger')
-            
+
     return render_template('login.html.j2')
 
 @app.route('/logout')
@@ -631,7 +631,7 @@ def follow_user(user_id):
     if not user_to_follow:
         flash("The user you are trying to follow does not exist.", "danger")
         return redirect(request.referrer or url_for('feed'))
-        
+
     db = get_db()
     try:
         # Insert the follow relationship. The PRIMARY KEY constraint will prevent duplicates if you've set one.
@@ -701,11 +701,11 @@ def admin_dashboard():
         users_page = 1
         posts_page = 1
         comments_page = 1
-    
+
     current_tab = request.args.get('tab', 'users') # Default to 'users' tab
 
     users_offset = (users_page - 1) * PAGE_SIZE
-    
+
     # First, get all users to calculate risk, then apply pagination in Python
     # It's more complex to do this efficiently in SQL if risk calc is Python-side
     all_users_raw = query_db('SELECT id, username, profile, created_at FROM users')
@@ -739,7 +739,7 @@ def admin_dashboard():
     for post in posts_raw:
         post_dict = dict(post)
         _, base_score = moderate_content(post_dict['content'])
-        final_score = base_score 
+        final_score = base_score
         author_created_dt = post_dict['user_created_at']
         author_age_days = (datetime.utcnow() - author_created_dt).days
         if author_age_days < 7:
@@ -780,11 +780,11 @@ def admin_dashboard():
     comments.sort(key=lambda x: x['risk_score'], reverse=True) # Sort after fetching and scoring
 
 
-    return render_template('admin.html.j2', 
-                           users=users, 
-                           posts=posts, 
+    return render_template('admin.html.j2',
+                           users=users,
+                           posts=posts,
                            comments=comments,
-                           
+
                            # Pagination for Users
                            users_page=users_page,
                            total_users_pages=total_users_pages,
@@ -813,11 +813,11 @@ def admin_delete_user(user_id):
     if session.get('username') != 'admin':
         flash("You do not have permission to perform this action.", "danger")
         return redirect(url_for('feed'))
-        
+
     if user_id == session.get('user_id'):
         flash('You cannot delete your own account from the admin panel.', 'danger')
         return redirect(url_for('admin_dashboard'))
-    
+
     db = get_db()
     db.execute('DELETE FROM users WHERE id = ?', (user_id,))
     db.commit()
@@ -890,7 +890,7 @@ def recommend(user_id, filter_following):
     - https://www.researchgate.net/publication/227268858_Recommender_Systems_Handbook
     """
 
-    recommended_posts = {} 
+    recommended_posts = {}
 
     return recommended_posts;
 
@@ -908,12 +908,12 @@ def user_risk_analysis(user_id):
             password: admin
         Then, navigate to the /admin endpoint. (http://localhost:8080/admin)
     """
-    
+
     score = 0
 
     return score;
 
-    
+
 # Task 3.3
 def moderate_content(content):
     """
@@ -921,10 +921,15 @@ def moderate_content(content):
         content: the text content of a post or comment to be moderated.
         
     Returns: 
-        A tuple containing the moderated content (string) and a severity score (float). There are no strict rules or bounds to the severity score, other than that a score of less than 1.0 means no risk, 1.0 to 3.0 is low risk, 3.0 to 5.0 is medium risk and above 5.0 is high risk.
+        A tuple containing the moderated content (string) and a severity score (float).
+        There are no strict rules or bounds to the severity score,
+        other than that a score of less than 1.0 means no risk, 1.0 to 3.0 is low risk,
+        3.0 to 5.0 is medium risk and above 5.0 is high risk.
     
     This function moderates a string of content and calculates a severity score based on
-    rules loaded from the 'censorship.dat' file. These are already loaded as TIER1_WORDS, TIER2_PHRASES and TIER3_WORDS. Tier 1 corresponds to strong profanity, Tier 2 to scam/spam phrases and Tier 3 to mild profanity.
+    rules loaded from the 'censorship.dat' file.
+    These are already loaded as TIER1_WORDS, TIER2_PHRASES and TIER3_WORDS.
+    Tier 1 corresponds to strong profanity, Tier 2 to scam/spam phrases and Tier 3 to mild profanity.
     
     You will be able to check the scores by logging in with the administrator account:
             username: admin
@@ -932,10 +937,100 @@ def moderate_content(content):
     Then, navigate to the /admin endpoint. (http://localhost:8080/admin)
     """
 
+    tier1_replacement_str = "[content removed due to severe violation]"
+    tier2_replacement_str = "[content removed due to spam/scam policy]"
+    tier3_substitute = "*"
+    link_substitute = "[link removed]"
     moderated_content = content
     score = 0
-    
+
+    tier1_filter_res = tier1_filter(content)
+    tier2_filter_res = tier2_filter(content)
+
+    # apply tier 1 and 2 word filter, if fits, return immediately
+    if tier1_filter_res:
+        moderated_content = tier1_replacement_str
+        score = 5.0
+        return moderated_content, score
+    elif tier2_filter_res:
+        moderated_content = tier2_replacement_str
+        score = 5.0
+        return moderated_content, score
+
+    # apply tier 3 word list
+    moderated_content, score = tier3_filter(content, tier3_substitute)
+
+    # apply link filter
+    moderated_content, score = link_filter(moderated_content, score, link_substitute)
+
+    # apply excessive capitalization check
+    moderated_content, score = capitalization_filter(moderated_content, score)
+
     return moderated_content, score
+
+
+def tier1_filter(content):
+    return any(
+        re.search(
+            rf"\b{re.escape(word)}\b",
+            content,
+            flags=re.I) # 'I' as Ignore case
+        for word in TIER1_WORDS)
+
+
+
+def tier2_filter(content):
+    return any(
+        re.search(
+            rf"\b{re.escape(phrase)}\b",
+            content,
+            flags=re.I)
+        for phrase in TIER2_PHRASES)
+
+
+def tier3_filter(content, substitute):
+    score = 0
+
+    # sort the list of words in descending order (longer one first)
+    sorted_words = sorted(TIER3_WORDS, key=len, reverse=True)
+
+    for word in sorted_words:
+        # the word might follow with a punctuation
+        p = r'(?<!\w)' + re.escape(word) + r'(?!\w)'
+
+        matches = list(re.finditer(p, content, flags=re.IGNORECASE))
+        for m in matches:
+            start, end = m.span()
+            content = content[:start] + substitute * (end - start) + content[end:]
+            score += 2.0
+
+    return content, score
+
+
+def link_filter(content, score, substitute):
+    p = r'(https?://\S+|www\.\S+|\b[a-z0-9.-]+(\[.\]|\.)([a-z]{2,6})\S*\b)'
+
+    matches = re.findall(p, content, flags=re.I)
+    score += 2.0 * len(matches)
+    content = re.sub(p, substitute, content, flags=re.I)
+
+    return content, score
+
+def capitalization_filter(content, score):
+    letters = 0
+    capitalized_count = 0
+
+    for c in content:
+        if c.isalpha():
+            letters += 1
+            if c.isupper():
+                capitalized_count += 1
+
+    if letters > 15 and capitalized_count / letters > 0.70:
+        return content, score + 0.5
+
+    return content, score
+    
 
 
 if __name__ == '__main__':
