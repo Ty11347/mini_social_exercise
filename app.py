@@ -27,6 +27,7 @@ TIER1_WORDS = MODERATION_CONFIG['categories']['tier1_severe_violations']['words'
 TIER2_PHRASES = MODERATION_CONFIG['categories']['tier2_spam_scams']['phrases']
 TIER3_WORDS = MODERATION_CONFIG['categories']['tier3_mild_profanity']['words']
 
+
 def get_db():
     """
     Connect to the application's configured database. The connection
@@ -78,6 +79,7 @@ def query_db(query, args=(), one=False, commit=False):
         print(f"Database error: {e}")
         return None
 
+
 @app.template_filter('datetimeformat')
 def datetimeformat(value):
     if isinstance(value, datetime):
@@ -87,6 +89,7 @@ def datetimeformat(value):
     else:
         return "N/A"
     return dt.strftime('%b %d, %Y %H:%M')
+
 
 REACTION_EMOJIS = {
     'like': '❤️', 'love': '😍', 'laugh': '😂',
@@ -174,8 +177,12 @@ def feed():
             if reaction_check:
                 user_reaction = reaction_check['reaction_type']
 
-        reactions = query_db('SELECT reaction_type, COUNT(*) as count FROM reactions WHERE post_id = ? GROUP BY reaction_type', (post['id'],))
-        comments_raw = query_db('SELECT c.id, c.content, c.created_at, u.username, u.id as user_id FROM comments c JOIN users u ON c.user_id = u.id WHERE c.post_id = ? ORDER BY c.created_at ASC', (post['id'],))
+        reactions = query_db(
+            'SELECT reaction_type, COUNT(*) as count FROM reactions WHERE post_id = ? GROUP BY reaction_type',
+            (post['id'],))
+        comments_raw = query_db(
+            'SELECT c.id, c.content, c.created_at, u.username, u.id as user_id FROM comments c JOIN users u ON c.user_id = u.id WHERE c.post_id = ? ORDER BY c.created_at ASC',
+            (post['id'],))
         post_dict = dict(post)
         post_dict['content'], _ = moderate_content(post_dict['content'])
         comments_moderated = []
@@ -196,10 +203,11 @@ def feed():
                            posts=posts_data,
                            current_sort=sort,
                            current_show=show,
-                           page=page, # Pass current page number
-                           per_page=POSTS_PER_PAGE, # Pass items per page
+                           page=page,  # Pass current page number
+                           per_page=POSTS_PER_PAGE,  # Pass items per page
                            reaction_emojis=REACTION_EMOJIS,
                            reaction_types=REACTION_TYPES)
+
 
 @app.route('/posts/new', methods=['POST'])
 def add_post():
@@ -268,6 +276,7 @@ def delete_post(post_id):
     # Redirect back to the page the user came from, or the feed as a fallback
     return redirect(request.referrer or url_for('feed'))
 
+
 @app.route('/u/<username>')
 def user_profile(username):
     """Displays a user's profile page with moderated bio, posts, and latest comments."""
@@ -280,7 +289,8 @@ def user_profile(username):
     moderated_bio, _ = moderate_content(user.get('profile', ''))
     user['profile'] = moderated_bio
 
-    posts_raw = query_db('SELECT id, content, user_id, created_at FROM posts WHERE user_id = ? ORDER BY created_at DESC', (user['id'],))
+    posts_raw = query_db(
+        'SELECT id, content, user_id, created_at FROM posts WHERE user_id = ? ORDER BY created_at DESC', (user['id'],))
     posts = []
     for post_raw in posts_raw:
         post = dict(post_raw)
@@ -288,7 +298,9 @@ def user_profile(username):
         post['content'] = moderated_post_content
         posts.append(post)
 
-    comments_raw = query_db('SELECT id, content, user_id, post_id, created_at FROM comments WHERE user_id = ? ORDER BY created_at DESC LIMIT 100', (user['id'],))
+    comments_raw = query_db(
+        'SELECT id, content, user_id, post_id, created_at FROM comments WHERE user_id = ? ORDER BY created_at DESC LIMIT 100',
+        (user['id'],))
     comments = []
     for comment_raw in comments_raw:
         comment = dict(comment_raw)
@@ -296,11 +308,13 @@ def user_profile(username):
         comment['content'] = moderated_comment_content
         comments.append(comment)
 
-    followers_count = query_db('SELECT COUNT(*) as cnt FROM follows WHERE followed_id = ?', (user['id'],), one=True)['cnt']
-    following_count = query_db('SELECT COUNT(*) as cnt FROM follows WHERE follower_id = ?', (user['id'],), one=True)['cnt']
+    followers_count = query_db('SELECT COUNT(*) as cnt FROM follows WHERE followed_id = ?', (user['id'],), one=True)[
+        'cnt']
+    following_count = query_db('SELECT COUNT(*) as cnt FROM follows WHERE follower_id = ?', (user['id'],), one=True)[
+        'cnt']
 
     #  NEW: CHECK FOLLOW STATUS 
-    is_currently_following = False # Default to False
+    is_currently_following = False  # Default to False
     current_user_id = session.get('user_id')
 
     # We only need to check if a user is logged in
@@ -329,12 +343,13 @@ def user_followers(username):
     if not user:
         abort(404)
     followers = query_db('''
-        SELECT u.username
-        FROM follows f
-        JOIN users u ON f.follower_id = u.id
-        WHERE f.followed_id = ?
-    ''', (user['id'],))
+                         SELECT u.username
+                         FROM follows f
+                                  JOIN users u ON f.follower_id = u.id
+                         WHERE f.followed_id = ?
+                         ''', (user['id'],))
     return render_template('user_list.html.j2', user=user, users=followers, title="Followers of")
+
 
 @app.route('/u/<username>/following')
 def user_following(username):
@@ -342,23 +357,24 @@ def user_following(username):
     if not user:
         abort(404)
     following = query_db('''
-        SELECT u.username
-        FROM follows f
-        JOIN users u ON f.followed_id = u.id
-        WHERE f.follower_id = ?
-    ''', (user['id'],))
+                         SELECT u.username
+                         FROM follows f
+                                  JOIN users u ON f.followed_id = u.id
+                         WHERE f.follower_id = ?
+                         ''', (user['id'],))
     return render_template('user_list.html.j2', user=user, users=following, title="Users followed by")
+
 
 @app.route('/posts/<int:post_id>')
 def post_detail(post_id):
     """Displays a single post and its comments, with content moderation applied."""
 
     post_raw = query_db('''
-        SELECT p.id, p.content, p.created_at, u.username, u.id as user_id
-        FROM posts p
-        JOIN users u ON p.user_id = u.id
-        WHERE p.id = ?
-    ''', (post_id,), one=True)
+                        SELECT p.id, p.content, p.created_at, u.username, u.id as user_id
+                        FROM posts p
+                                 JOIN users u ON p.user_id = u.id
+                        WHERE p.id = ?
+                        ''', (post_id,), one=True)
 
     if not post_raw:
         # The abort function will stop the request and show a 404 Not Found page.
@@ -373,18 +389,20 @@ def post_detail(post_id):
 
     #  Fetch Reactions (No moderation needed) 
     reactions = query_db('''
-        SELECT reaction_type, COUNT(*) as count
-        FROM reactions
-        WHERE post_id = ?
-        GROUP BY reaction_type
-    ''', (post_id,))
+                         SELECT reaction_type, COUNT(*) as count
+                         FROM reactions
+                         WHERE post_id = ?
+                         GROUP BY reaction_type
+                         ''', (post_id,))
 
     #  Fetch and Moderate Comments 
-    comments_raw = query_db('SELECT c.id, c.content, c.created_at, u.username, u.id as user_id FROM comments c JOIN users u ON c.user_id = u.id WHERE c.post_id = ? ORDER BY c.created_at ASC', (post_id,))
+    comments_raw = query_db(
+        'SELECT c.id, c.content, c.created_at, u.username, u.id as user_id FROM comments c JOIN users u ON c.user_id = u.id WHERE c.post_id = ? ORDER BY c.created_at ASC',
+        (post_id,))
 
-    comments = [] # Create a new list for the moderated comments
+    comments = []  # Create a new list for the moderated comments
     for comment_raw in comments_raw:
-        comment = dict(comment_raw) # Convert to a dictionary
+        comment = dict(comment_raw)  # Convert to a dictionary
         # Moderate the content of each comment
         print(comment['content'])
         moderated_comment_content, _ = moderate_content(comment['content'])
@@ -399,9 +417,11 @@ def post_detail(post_id):
                            reaction_emojis=REACTION_EMOJIS,
                            reaction_types=REACTION_TYPES)
 
+
 @app.route('/about')
 def about():
     return render_template('about.html.j2')
+
 
 @app.route('/privacy')
 def privacy():
@@ -432,13 +452,13 @@ def signup():
             new_user_id = cur.lastrowid
 
             # 2. Add user info to the session cookie.
-            session.clear() # Clear any old session data
+            session.clear()  # Clear any old session data
             session['user_id'] = new_user_id
             session['username'] = username
 
             # 3. Flash a welcome message and redirect to the feed.
             flash(f'Welcome, {username}! Your account has been created.', 'success')
-            return redirect(url_for('feed')) # Redirect to the main feed/dashboard
+            return redirect(url_for('feed'))  # Redirect to the main feed/dashboard
 
         except sqlite3.IntegrityError:
             flash('Username already taken. Please choose another one.', 'danger')
@@ -447,6 +467,7 @@ def signup():
             db.close()
 
     return render_template('signup.html.j2')
+
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -473,11 +494,13 @@ def login():
 
     return render_template('login.html.j2')
 
+
 @app.route('/logout')
 def logout():
     session.clear()
     flash('Logged out.', 'info')
     return redirect(url_for('login'))
+
 
 @app.route('/posts/<int:post_id>/comment', methods=['POST'])
 def add_comment(post_id):
@@ -505,6 +528,7 @@ def add_comment(post_id):
     # Redirect back to the page the user came from (likely the post detail page)
     return redirect(request.referrer or url_for('post_detail', post_id=post_id))
 
+
 @app.route('/comments/<int:comment_id>/delete', methods=['POST'])
 def delete_comment(comment_id):
     """Handles deleting a comment."""
@@ -517,11 +541,11 @@ def delete_comment(comment_id):
 
     # Find the comment and the original post's author ID
     comment = query_db('''
-        SELECT c.id, c.user_id, p.user_id as post_author_id
-        FROM comments c
-        JOIN posts p ON c.post_id = p.id
-        WHERE c.id = ?
-    ''', (comment_id,), one=True)
+                       SELECT c.id, c.user_id, p.user_id as post_author_id
+                       FROM comments c
+                                JOIN posts p ON c.post_id = p.id
+                       WHERE c.id = ?
+                       ''', (comment_id,), one=True)
 
     # Check if the comment exists
     if not comment:
@@ -541,6 +565,7 @@ def delete_comment(comment_id):
     flash('Comment successfully deleted.', 'success')
     # Redirect back to the page the user came from
     return redirect(request.referrer or url_for('feed'))
+
 
 @app.route('/react', methods=['POST'])
 def add_reaction():
@@ -576,6 +601,7 @@ def add_reaction():
     db.commit()
 
     return redirect(request.referrer or url_for('feed'))
+
 
 @app.route('/unreact', methods=['POST'])
 def unreact():
@@ -658,7 +684,7 @@ def unfollow_user(user_id):
 
     db = get_db()
     cur = db.execute('DELETE FROM follows WHERE follower_id = ? AND followed_id = ?',
-               (follower_id, user_id))
+                     (follower_id, user_id))
     db.commit()
 
     if cur.rowcount > 0:
@@ -672,6 +698,7 @@ def unfollow_user(user_id):
     # Redirect back to the page the user came from
     return redirect(request.referrer or url_for('feed'))
 
+
 @app.route('/admin')
 def admin_dashboard():
     """Displays the admin dashboard with users, posts, and comments, sorted by risk."""
@@ -680,7 +707,7 @@ def admin_dashboard():
         flash("You do not have permission to access this page.", "danger")
         return redirect(url_for('feed'))
 
-    RISK_LEVELS = { "HIGH": 5, "MEDIUM": 3, "LOW": 1 }
+    RISK_LEVELS = {"HIGH": 5, "MEDIUM": 3, "LOW": 1}
     PAGE_SIZE = 50
 
     def get_risk_profile(score):
@@ -702,7 +729,7 @@ def admin_dashboard():
         posts_page = 1
         comments_page = 1
 
-    current_tab = request.args.get('tab', 'users') # Default to 'users' tab
+    current_tab = request.args.get('tab', 'users')  # Default to 'users' tab
 
     users_offset = (users_page - 1) * PAGE_SIZE
 
@@ -721,7 +748,7 @@ def admin_dashboard():
 
     all_users.sort(key=lambda x: x['risk_score'], reverse=True)
     total_users = len(all_users)
-    users = all_users[users_offset : users_offset + PAGE_SIZE]
+    users = all_users[users_offset: users_offset + PAGE_SIZE]
     total_users_pages = (total_users + PAGE_SIZE - 1) // PAGE_SIZE
 
     # --- Posts Tab Data ---
@@ -750,7 +777,7 @@ def admin_dashboard():
         post_dict['risk_score'] = round(final_score, 2)
         posts.append(post_dict)
 
-    posts.sort(key=lambda x: x['risk_score'], reverse=True) # Sort after fetching and scoring
+    posts.sort(key=lambda x: x['risk_score'], reverse=True)  # Sort after fetching and scoring
 
     # --- Comments Tab Data ---
     comments_offset = (comments_page - 1) * PAGE_SIZE
@@ -777,8 +804,7 @@ def admin_dashboard():
         comment_dict['risk_score'] = round(score, 2)
         comments.append(comment_dict)
 
-    comments.sort(key=lambda x: x['risk_score'], reverse=True) # Sort after fetching and scoring
-
+    comments.sort(key=lambda x: x['risk_score'], reverse=True)  # Sort after fetching and scoring
 
     return render_template('admin.html.j2',
                            users=users,
@@ -805,7 +831,6 @@ def admin_dashboard():
 
                            current_tab=current_tab,
                            PAGE_SIZE=PAGE_SIZE)
-
 
 
 @app.route('/admin/delete/user/<int:user_id>', methods=['POST'])
@@ -852,9 +877,11 @@ def admin_delete_comment(comment_id):
     flash(f'Comment {comment_id} has been deleted.', 'success')
     return redirect(url_for('admin_dashboard'))
 
+
 @app.route('/rules')
 def rules():
     return render_template('rules.html.j2')
+
 
 @app.template_global()
 def loop_color(user_id):
@@ -864,7 +891,6 @@ def loop_color(user_id):
     g = int(h[2:4], 16)
     b = int(h[4:6], 16)
     return f'rgb({r % 128 + 80}, {g % 128 + 80}, {b % 128 + 80})'
-
 
 
 # ----- Functions to be implemented are below
@@ -893,6 +919,7 @@ def recommend(user_id, filter_following):
     recommended_posts = {}
 
     return recommended_posts;
+
 
 # Task 3.2
 def user_risk_analysis(user_id):
@@ -980,9 +1007,8 @@ def tier1_filter(content):
         re.search(
             rf"\b{re.escape(word)}\b",
             content,
-            flags=re.I) # 'I' as Ignore case
+            flags=re.I)  # 'I' as Ignore case
         for word in TIER1_WORDS)
-
 
 
 def tier2_filter(content):
@@ -1022,6 +1048,7 @@ def link_filter(content, score, substitute):
 
     return content, score
 
+
 def capitalization_filter(content, score):
     letters = 0
     capitalized_count = 0
@@ -1037,6 +1064,7 @@ def capitalization_filter(content, score):
 
     return content, score
 
+
 LEET_MAP = {
     '4': 'a',
     '@': 'a',
@@ -1049,10 +1077,10 @@ LEET_MAP = {
     '7': 't'
 }
 
+
 def normalize_leet(content):
     return ''.join(LEET_MAP.get(c.lower(), c) for c in content)
 
 
 if __name__ == '__main__':
     app.run(debug=True, port=8080)
-
