@@ -942,7 +942,81 @@ def user_risk_analysis(user_id):
 
     score = 0
 
-    return score
+    # user info
+    user = query_db("SELECT profile, created_at FROM users WHERE id = ?", (user_id,))
+
+    user_content = user[0]['profile']
+    user_created_at = user[0]['created_at']
+    profile_score = moderate_content(user_content)[1]
+
+    author_age_days = (datetime.utcnow() - user_created_at).days
+
+    # posts info
+    posts = query_db("SELECT content FROM posts WHERE user_id = ?", (user_id,))
+
+    total_post_score = 0
+    if posts:
+        for p in posts:
+            score = moderate_content(p["content"])[1]
+            total_post_score += score
+        average_post_score = total_post_score / len(posts)
+    else:
+        average_post_score = 0
+
+    # comments info
+    comments = query_db("SELECT content FROM comments WHERE user_id = ?", (user_id,))
+
+    total_comment_score = 0
+    if comments:
+        for c in comments:
+            score = moderate_content(c["content"])[1]
+            total_comment_score += score
+        average_comment_score = total_comment_score / len(comments)
+    else:
+        average_comment_score = 0
+
+    # combine score
+    content_risk_score = profile_score + average_post_score * 3 + average_comment_score
+
+    # apply age multiplier
+    if author_age_days < 7:
+        user_risk_score = content_risk_score * 1.5
+
+        # apply additional risk prediction measurement:
+        # if the user account is less than 7 days
+        # but has high activity (> 10 activities, possible spamming)
+        # risk + 1.5
+        now = datetime.utcnow()
+
+        # calc post activities
+        recent_posts_count = 0
+        for p in posts:
+            post_created_at = datetime.fromisoformat(p["created_at"])
+            days_since_post = (now - post_created_at).days
+            if days_since_post < 7:
+                recent_posts_count += 1
+
+        # calc post activities
+        recent_comments_count = 0
+        for c in comments:
+            comment_created_at = datetime.fromisoformat(c["created_at"])
+            days_since_comment = (now - comment_created_at).days
+            if days_since_comment < 7:
+                recent_comments_count += 1
+
+        # total
+        activity_count = recent_posts_count + recent_comments_count
+
+        if activity_count > 10:
+            user_risk_score += 1.5
+
+    elif author_age_days < 30:
+        user_risk_score = content_risk_score * 1.2
+    else:
+        user_risk_score = content_risk_score
+
+    # final capping
+    return min(user_risk_score, 5.0)
 
 
 # Task 3.3
@@ -967,6 +1041,10 @@ def moderate_content(content):
             password: admin
     Then, navigate to the /admin endpoint. (http://localhost:8080/admin)
     """
+
+    # when there are no content
+    if not content:
+        return None, 0
 
     tier1_replacement_str = "[content removed due to severe violation]"
     tier2_replacement_str = "[content removed due to spam/scam policy]"
