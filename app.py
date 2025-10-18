@@ -8,14 +8,20 @@ import hashlib
 import re
 from datetime import datetime
 
+from collections import Counter
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+from scipy.sparse import csr_matrix
+import numpy as np
+
 app = Flask(__name__)
 app.secret_key = '123456789'
 DATABASE = 'database.sqlite'
 
 # Load censorship data
-# WARNING! The censorship.dat file contains disturbing language when decrypted. 
-# If you want to test whether moderation works, 
-# you can trigger censorship using these words: 
+# WARNING! The censorship.dat file contains disturbing language when decrypted.
+# If you want to test whether moderation works,
+# you can trigger censorship using these words:
 # tier1badword, tier2badword, tier3badword
 ENCRYPTED_FILE_PATH = 'censorship.dat'
 fernet = Fernet('xpplx11wZUibz0E8tV8Z9mf-wwggzSrc21uQ17Qq2gg=')
@@ -61,7 +67,7 @@ def query_db(query, args=(), one=False, commit=False):
     db = get_db()
 
     # Using 'with' on a connection object implicitly handles transactions.
-    # The 'with' statement will automatically commit if successful, 
+    # The 'with' statement will automatically commit if successful,
     # or rollback if an exception occurs. This is safer.
     try:
         with db:
@@ -100,7 +106,7 @@ REACTION_TYPES = list(REACTION_EMOJIS.keys())
 
 @app.route('/')
 def feed():
-    #  1. Get Pagination and Filter Parameters 
+    #  1. Get Pagination and Filter Parameters
     try:
         page = int(request.args.get('page', 1))
     except ValueError:
@@ -115,7 +121,7 @@ def feed():
     current_user_id = session.get('user_id')
     params = []
 
-    #  2. Build the Query 
+    #  2. Build the Query
     where_clause = ""
     if show == 'following' and current_user_id:
         where_clause = "WHERE p.user_id IN (SELECT followed_id FROM follows WHERE follower_id = ?)"
@@ -140,7 +146,8 @@ def feed():
         final_params = params + list(pagination_params)
         posts = query_db(query, final_params)
     elif sort == 'recommended':
-        posts = recommend(current_user_id, show == 'following' and current_user_id)
+        posts = recommend(current_user_id, show ==
+                          'following' and current_user_id)
     else:  # Default sort is 'new'
         query = f"""
             SELECT p.id, p.content, p.created_at, u.username, u.id as user_id
@@ -188,7 +195,8 @@ def feed():
         comments_moderated = []
         for comment in comments_raw:
             comment_dict = dict(comment)
-            comment_dict['content'], _ = moderate_content(comment_dict['content'])
+            comment_dict['content'], _ = moderate_content(
+                comment_dict['content'])
             comments_moderated.append(comment_dict)
         posts_data.append({
             'post': post_dict,
@@ -198,7 +206,7 @@ def feed():
             'comments': comments_moderated
         })
 
-    #  4. Render Template with Pagination Info 
+    #  4. Render Template with Pagination Info
     return render_template('feed.html.j2',
                            posts=posts_data,
                            current_sort=sort,
@@ -251,7 +259,8 @@ def delete_post(post_id):
         return redirect(url_for('login'))
 
     # Find the post in the database
-    post = query_db('SELECT id, user_id FROM posts WHERE id = ?', (post_id,), one=True)
+    post = query_db('SELECT id, user_id FROM posts WHERE id = ?',
+                    (post_id,), one=True)
 
     # Check if the post exists and if the current user is the owner
     if not post:
@@ -281,7 +290,8 @@ def delete_post(post_id):
 def user_profile(username):
     """Displays a user's profile page with moderated bio, posts, and latest comments."""
 
-    user_raw = query_db('SELECT * FROM users WHERE username = ?', (username,), one=True)
+    user_raw = query_db(
+        'SELECT * FROM users WHERE username = ?', (username,), one=True)
     if not user_raw:
         abort(404)
 
@@ -313,7 +323,7 @@ def user_profile(username):
     following_count = query_db('SELECT COUNT(*) as cnt FROM follows WHERE follower_id = ?', (user['id'],), one=True)[
         'cnt']
 
-    #  NEW: CHECK FOLLOW STATUS 
+    #  NEW: CHECK FOLLOW STATUS
     is_currently_following = False  # Default to False
     current_user_id = session.get('user_id')
 
@@ -339,7 +349,8 @@ def user_profile(username):
 
 @app.route('/u/<username>/followers')
 def user_followers(username):
-    user = query_db('SELECT * FROM users WHERE username = ?', (username,), one=True)
+    user = query_db('SELECT * FROM users WHERE username = ?',
+                    (username,), one=True)
     if not user:
         abort(404)
     followers = query_db('''
@@ -353,7 +364,8 @@ def user_followers(username):
 
 @app.route('/u/<username>/following')
 def user_following(username):
-    user = query_db('SELECT * FROM users WHERE username = ?', (username,), one=True)
+    user = query_db('SELECT * FROM users WHERE username = ?',
+                    (username,), one=True)
     if not user:
         abort(404)
     following = query_db('''
@@ -380,14 +392,14 @@ def post_detail(post_id):
         # The abort function will stop the request and show a 404 Not Found page.
         abort(404)
 
-    #  Moderation for the Main Post 
+    #  Moderation for the Main Post
     # Convert the raw database row to a mutable dictionary
     post = dict(post_raw)
     # Unpack the tuple from moderate_content, we only need the moderated content string here
     moderated_post_content, _ = moderate_content(post['content'])
     post['content'] = moderated_post_content
 
-    #  Fetch Reactions (No moderation needed) 
+    #  Fetch Reactions (No moderation needed)
     reactions = query_db('''
                          SELECT reaction_type, COUNT(*) as count
                          FROM reactions
@@ -395,7 +407,7 @@ def post_detail(post_id):
                          GROUP BY reaction_type
                          ''', (post_id,))
 
-    #  Fetch and Moderate Comments 
+    #  Fetch and Moderate Comments
     comments_raw = query_db(
         'SELECT c.id, c.content, c.created_at, u.username, u.id as user_id FROM comments c JOIN users u ON c.user_id = u.id WHERE c.post_id = ? ORDER BY c.created_at ASC',
         (post_id,))
@@ -457,8 +469,10 @@ def signup():
             session['username'] = username
 
             # 3. Flash a welcome message and redirect to the feed.
-            flash(f'Welcome, {username}! Your account has been created.', 'success')
-            return redirect(url_for('feed'))  # Redirect to the main feed/dashboard
+            flash(
+                f'Welcome, {username}! Your account has been created.', 'success')
+            # Redirect to the main feed/dashboard
+            return redirect(url_for('feed'))
 
         except sqlite3.IntegrityError:
             flash('Username already taken. Please choose another one.', 'danger')
@@ -476,7 +490,8 @@ def login():
         password = request.form['password']
 
         db = get_db()
-        user = db.execute('SELECT * FROM users WHERE username = ?', (username,)).fetchone()
+        user = db.execute(
+            'SELECT * FROM users WHERE username = ?', (username,)).fetchone()
         db.close()
 
         # 1. Check if the user exists.
@@ -628,7 +643,8 @@ def unreact():
     )
 
     if existing_reaction:
-        db.execute('DELETE FROM reactions WHERE id = ?', (existing_reaction['id'],))
+        db.execute('DELETE FROM reactions WHERE id = ?',
+                   (existing_reaction['id'],))
         db.commit()
         flash("Reaction removed.", "success")
     else:
@@ -653,7 +669,8 @@ def follow_user(user_id):
         return redirect(request.referrer or url_for('feed'))
 
     # Check if the user to be followed actually exists
-    user_to_follow = query_db('SELECT id FROM users WHERE id = ?', (user_id,), one=True)
+    user_to_follow = query_db(
+        'SELECT id FROM users WHERE id = ?', (user_id,), one=True)
     if not user_to_follow:
         flash("The user you are trying to follow does not exist.", "danger")
         return redirect(request.referrer or url_for('feed'))
@@ -664,7 +681,8 @@ def follow_user(user_id):
         db.execute('INSERT INTO follows (follower_id, followed_id) VALUES (?, ?)',
                    (follower_id, user_id))
         db.commit()
-        username_to_follow = query_db('SELECT username FROM users WHERE id = ?', (user_id,), one=True)['username']
+        username_to_follow = query_db(
+            'SELECT username FROM users WHERE id = ?', (user_id,), one=True)['username']
         flash(f"You are now following {username_to_follow}.", "success")
     except sqlite3.IntegrityError:
         flash("You are already following this user.", "info")
@@ -689,7 +707,8 @@ def unfollow_user(user_id):
 
     if cur.rowcount > 0:
         # cur.rowcount tells us if a row was actually deleted
-        username_unfollowed = query_db('SELECT username FROM users WHERE id = ?', (user_id,), one=True)['username']
+        username_unfollowed = query_db(
+            'SELECT username FROM users WHERE id = ?', (user_id,), one=True)['username']
         flash(f"You have unfollowed {username_unfollowed}.", "success")
     else:
         # This case handles if someone tries to unfollow a user they weren't following
@@ -735,7 +754,8 @@ def admin_dashboard():
 
     # First, get all users to calculate risk, then apply pagination in Python
     # It's more complex to do this efficiently in SQL if risk calc is Python-side
-    all_users_raw = query_db('SELECT id, username, profile, created_at FROM users')
+    all_users_raw = query_db(
+        'SELECT id, username, profile, created_at FROM users')
     all_users = []
     for user in all_users_raw:
         user_dict = dict(user)
@@ -753,7 +773,8 @@ def admin_dashboard():
 
     # --- Posts Tab Data ---
     posts_offset = (posts_page - 1) * PAGE_SIZE
-    total_posts_count = query_db('SELECT COUNT(*) as count FROM posts', one=True)['count']
+    total_posts_count = query_db(
+        'SELECT COUNT(*) as count FROM posts', one=True)['count']
     total_posts_pages = (total_posts_count + PAGE_SIZE - 1) // PAGE_SIZE
 
     posts_raw = query_db(f'''
@@ -777,11 +798,13 @@ def admin_dashboard():
         post_dict['risk_score'] = round(final_score, 2)
         posts.append(post_dict)
 
-    posts.sort(key=lambda x: x['risk_score'], reverse=True)  # Sort after fetching and scoring
+    # Sort after fetching and scoring
+    posts.sort(key=lambda x: x['risk_score'], reverse=True)
 
     # --- Comments Tab Data ---
     comments_offset = (comments_page - 1) * PAGE_SIZE
-    total_comments_count = query_db('SELECT COUNT(*) as count FROM comments', one=True)['count']
+    total_comments_count = query_db(
+        'SELECT COUNT(*) as count FROM comments', one=True)['count']
     total_comments_pages = (total_comments_count + PAGE_SIZE - 1) // PAGE_SIZE
 
     comments_raw = query_db(f'''
@@ -804,7 +827,8 @@ def admin_dashboard():
         comment_dict['risk_score'] = round(score, 2)
         comments.append(comment_dict)
 
-    comments.sort(key=lambda x: x['risk_score'], reverse=True)  # Sort after fetching and scoring
+    # Sort after fetching and scoring
+    comments.sort(key=lambda x: x['risk_score'], reverse=True)
 
     return render_template('admin.html.j2',
                            users=users,
@@ -826,7 +850,8 @@ def admin_dashboard():
                            # Pagination for Comments
                            comments_page=comments_page,
                            total_comments_pages=total_comments_pages,
-                           comments_has_next=(comments_page < total_comments_pages),
+                           comments_has_next=(
+                                   comments_page < total_comments_pages),
                            comments_has_prev=(comments_page > 1),
 
                            current_tab=current_tab,
@@ -895,6 +920,7 @@ def loop_color(user_id):
 
 # ----- Functions to be implemented are below
 
+
 # Task 3.1
 def recommend(user_id, filter_following):
     """
@@ -905,20 +931,131 @@ def recommend(user_id, filter_following):
     Returns:
         A list of 5 recommended posts, in reverse-chronological order.
 
-    To test whether your recommendation algorithm works, let's pretend we like the DIY topic. Here are some users that often post DIY comment and a few example posts. Make sure your account did not engage with anything else. You should test your algorithm with these and see if your recommendation algorithm picks up on your interest in DIY and starts showing related content.
-    
+    To test whether your recommendation algorithm works,
+    let's pretend we like the DIY topic.
+    Here are some users that often post DIY comment and a few example posts.
+    Make sure your account did not engage with anything else.
+    You should test your algorithm with these
+    and see if your recommendation algorithm picks up on your interest in DIY and starts showing related content.
+
     Users: @starboy99, @DancingDolphin, @blogger_bob
     Posts: 1810, 1875, 1880, 2113
-    
-    Materials: 
+
+    Materials:
     - https://www.nvidia.com/en-us/glossary/recommendation-system/
     - http://www.configworks.com/mz/handout_recsys_sac2010.pdf
     - https://www.researchgate.net/publication/227268858_Recommender_Systems_Handbook
     """
 
-    recommended_posts = {}
+    # gets the list of post ids that the user has liked
+    liked_posts = query_db(
+        'SELECT post_id FROM reactions WHERE user_id = ? AND reaction_type = ?',
+        (user_id, 'like')
+    )
+    liked_ids = {p['post_id'] for p in liked_posts}
 
-    return recommended_posts;
+    # return default post if no likes
+    if not liked_ids:
+        return _get_default_posts(user_id)
+
+    # get all posts user liked
+    liked_contents = query_db(
+        f"SELECT id, content FROM posts WHERE id IN ({','.join(['?'] * len(liked_ids))})",
+        tuple(liked_ids)
+    )
+
+    profile = _build_user_profile(liked_contents)
+
+    # get candidate post, exclude posts that is user itself
+    candidates = query_db('''
+                          SELECT p.id, p.content, p.created_at, u.username, u.id as user_id
+                          FROM posts p
+                                   JOIN users u ON p.user_id = u.id
+                          WHERE p.user_id != ?
+                          ''', (user_id,))
+
+    # calc score of post
+    scored = []
+    for post in candidates:
+        if post['id'] in liked_ids:
+            continue
+        score = _calculate_match_score(post['content'], profile)
+        if score > 0:
+            scored.append({'post': post, 'score': score})
+
+    # sort based on score and time posted
+    scored.sort(key=lambda x: (
+        x['score'], x['post']['created_at']), reverse=True)
+    recommended = [item['post'] for item in scored]
+
+    # filter only followed user's post
+    if filter_following:
+        following_ids = _get_following_ids(user_id)
+        recommended = [p for p in recommended if p['user_id'] in following_ids]
+
+    return recommended[:5]
+
+
+def _build_user_profile(posts):
+    # counters for single (unigram) and two words (bigram)
+    unigrams, bigrams = Counter(), Counter()
+    for p in posts:
+        # spilt the content and get the meaningful words
+        tokens = _tokenize(p['content'])
+        # counters
+        unigrams.update(tokens)
+        bigrams.update((tokens[i], tokens[i + 1]) for i in range(len(tokens) - 1))
+
+    # filter infrequent words
+    min_freq = max(1, len(posts) // 3)  # at least 1/3 of liked possts
+    unigrams = Counter({k: v for k, v in unigrams.items() if v >= min_freq})
+    return {'unigrams': unigrams, 'bigrams': bigrams}
+
+
+# calc score based on matches
+def _calculate_match_score(content, profile):
+    tokens = _tokenize(content)
+    if not tokens:
+        return 0
+
+    # calc time each word appears in the user profile
+    u_score = sum(profile['unigrams'].get(t, 0) for t in tokens) / len(tokens)
+
+    # do the same for continues words
+    b_score = sum(profile['bigrams'].get((tokens[i], tokens[i + 1]), 0)
+                  for i in range(len(tokens) - 1))
+    b_score = b_score / max(1, len(tokens) - 1) if len(tokens) > 1 else 0
+
+    # conbine score
+    return u_score * 0.4 + b_score * 0.6
+
+
+# returns a meaningful word list by remove stop words, space and punctuations
+def _tokenize(text):
+    stop_words = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
+                  'of', 'with', 'by', 'from', 'is', 'was', 'are', 'were', 'be', 'been',
+                  'my', 'i', 'me', 'you', 'your', 'we', 'our', 'it', 'its', 'this',
+                  'that', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would',
+                  'can', 'could', 'should', 'just', 'like', 'get', 'so', 'out', 'up'}
+    return [w.strip('.,!?;:\'"()[]{}') for w in text.lower().split()
+            if len(w.strip('.,!?;:\'"()[]{}')) > 2 and w not in stop_words]
+
+
+# get all followed user id
+def _get_following_ids(user_id):
+    return {f['followed_id'] for f in query_db('SELECT followed_id FROM follows WHERE follower_id = ?', (user_id,))}
+
+
+# get newest post, exclude user's post
+def _get_default_posts(user_id):
+    return query_db('''
+                    SELECT p.id, p.content, p.created_at, u.username, u.id as user_id
+                    FROM posts p
+                             JOIN users u ON p.user_id = u.id
+                    WHERE p.user_id != ?
+                    ORDER BY p.created_at DESC
+                    LIMIT 5
+                    ''', (user_id,))
 
 
 # Task 3.2
@@ -933,7 +1070,7 @@ def user_risk_analysis(user_id):
         other than that a score of less than 1.0 means no risk,
         1.0 to 3.0 is low risk, 3.0 to 5.0 is medium risk and above 5.0 is high risk.
         (An upper bound of 5.0 is applied to this score elsewhere in the codebase)
-        
+
         You will be able to check the scores by logging in with the administrator account:
             username: admin
             password: admin
@@ -943,7 +1080,8 @@ def user_risk_analysis(user_id):
     score = 0
 
     # user info
-    user = query_db("SELECT profile, created_at FROM users WHERE id = ?", (user_id,))
+    user = query_db(
+        "SELECT profile, created_at FROM users WHERE id = ?", (user_id,))
 
     user_content = user[0]['profile']
     user_created_at = user[0]['created_at']
@@ -964,7 +1102,8 @@ def user_risk_analysis(user_id):
         average_post_score = 0
 
     # comments info
-    comments = query_db("SELECT content FROM comments WHERE user_id = ?", (user_id,))
+    comments = query_db(
+        "SELECT content FROM comments WHERE user_id = ?", (user_id,))
 
     total_comment_score = 0
     if comments:
@@ -976,7 +1115,8 @@ def user_risk_analysis(user_id):
         average_comment_score = 0
 
     # combine score
-    content_risk_score = profile_score + average_post_score * 3 + average_comment_score
+    content_risk_score = profile_score + \
+                         average_post_score * 3 + average_comment_score
 
     # apply age multiplier
     if author_age_days < 7:
@@ -1024,18 +1164,18 @@ def moderate_content(content):
     """
     Args
         content: the text content of a post or comment to be moderated.
-        
+
     Returns: 
         A tuple containing the moderated content (string) and a severity score (float).
         There are no strict rules or bounds to the severity score,
         other than that a score of less than 1.0 means no risk, 1.0 to 3.0 is low risk,
         3.0 to 5.0 is medium risk and above 5.0 is high risk.
-    
+
     This function moderates a string of content and calculates a severity score based on
     rules loaded from the 'censorship.dat' file.
     These are already loaded as TIER1_WORDS, TIER2_PHRASES and TIER3_WORDS.
     Tier 1 corresponds to strong profanity, Tier 2 to scam/spam phrases and Tier 3 to mild profanity.
-    
+
     You will be able to check the scores by logging in with the administrator account:
             username: admin
             password: admin
@@ -1052,15 +1192,15 @@ def moderate_content(content):
     link_substitute = "[link removed]"
 
     # apply tier 1 and 2 word filter on original content
-    tier1_filter_res = tier1_filter(content)
-    tier2_filter_res = tier2_filter(content)
+    tier1_filter_res = _tier1_filter(content)
+    tier2_filter_res = _tier2_filter(content)
 
     # normalize leet speak content before filters
-    normalized = normalize_leet(content)
+    normalized = _normalize_leet(content)
 
     # apply tier 1 and 2 word filter on normalized content
-    tier1_filter_res_norm = tier1_filter(normalized)
-    tier2_filter_res_norm = tier2_filter(normalized)
+    tier1_filter_res_norm = _tier1_filter(normalized)
+    tier2_filter_res_norm = _tier2_filter(normalized)
 
     # if any fits, return immediately
     if tier1_filter_res or tier1_filter_res_norm:
@@ -1069,18 +1209,19 @@ def moderate_content(content):
         return tier2_replacement_str, 5.0
 
     # apply tier 3 word list
-    moderated_content, score = tier3_filter(content, tier3_substitute)
+    moderated_content, score = _tier3_filter(content, tier3_substitute)
 
     # apply link filter
-    moderated_content, score = link_filter(moderated_content, score, link_substitute)
+    moderated_content, score = _link_filter(
+        moderated_content, score, link_substitute)
 
     # apply excessive capitalization check
-    moderated_content, score = capitalization_filter(moderated_content, score)
+    moderated_content, score = _capitalization_filter(moderated_content, score)
 
     return moderated_content, score
 
 
-def tier1_filter(content):
+def _tier1_filter(content):
     return any(
         re.search(
             rf"\b{re.escape(word)}\b",
@@ -1089,7 +1230,7 @@ def tier1_filter(content):
         for word in TIER1_WORDS)
 
 
-def tier2_filter(content):
+def _tier2_filter(content):
     return any(
         re.search(
             rf"\b{re.escape(phrase)}\b",
@@ -1098,7 +1239,7 @@ def tier2_filter(content):
         for phrase in TIER2_PHRASES)
 
 
-def tier3_filter(content, substitute):
+def _tier3_filter(content, substitute):
     score = 0
 
     # sort the list of words in descending order (longer one first)
@@ -1111,13 +1252,14 @@ def tier3_filter(content, substitute):
         matches = list(re.finditer(p, content, flags=re.IGNORECASE))
         for m in matches:
             start, end = m.span()
-            content = content[:start] + substitute * (end - start) + content[end:]
+            content = content[:start] + substitute * \
+                      (end - start) + content[end:]
             score += 2.0
 
     return content, score
 
 
-def link_filter(content, score, substitute):
+def _link_filter(content, score, substitute):
     p = r'(https?://\S+|www\.\S+|\b[a-z0-9.-]+(\[.\]|\.)([a-z]{2,6})\S*\b)'
 
     matches = re.findall(p, content, flags=re.I)
@@ -1127,7 +1269,7 @@ def link_filter(content, score, substitute):
     return content, score
 
 
-def capitalization_filter(content, score):
+def _capitalization_filter(content, score):
     letters = 0
     capitalized_count = 0
 
@@ -1156,7 +1298,7 @@ LEET_MAP = {
 }
 
 
-def normalize_leet(content):
+def _normalize_leet(content):
     return ''.join(LEET_MAP.get(c.lower(), c) for c in content)
 
 
