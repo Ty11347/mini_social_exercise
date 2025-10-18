@@ -1,18 +1,12 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash, g
 from werkzeug.security import generate_password_hash, check_password_hash
 from cryptography.fernet import Fernet
-import collections
 import json
 import sqlite3
 import hashlib
 import re
 from datetime import datetime
-
 from collections import Counter
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
-from scipy.sparse import csr_matrix
-import numpy as np
 
 app = Flask(__name__)
 app.secret_key = '123456789'
@@ -1007,7 +1001,7 @@ def _build_user_profile(posts):
         bigrams.update((tokens[i], tokens[i + 1]) for i in range(len(tokens) - 1))
 
     # filter infrequent words
-    min_freq = max(1, len(posts) // 3)  # at least 1/3 of liked possts
+    min_freq = max(1, len(posts) // 3)  # at least 1/3 of liked posts
     unigrams = Counter({k: v for k, v in unigrams.items() if v >= min_freq})
     return {'unigrams': unigrams, 'bigrams': bigrams}
 
@@ -1026,7 +1020,7 @@ def _calculate_match_score(content, profile):
                   for i in range(len(tokens) - 1))
     b_score = b_score / max(1, len(tokens) - 1) if len(tokens) > 1 else 0
 
-    # conbine score
+    # combine score
     return u_score * 0.4 + b_score * 0.6
 
 
