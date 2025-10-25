@@ -737,10 +737,12 @@ def admin_dashboard():
         users_page = int(request.args.get('users_page', 1))
         posts_page = int(request.args.get('posts_page', 1))
         comments_page = int(request.args.get('comments_page', 1))
+        reports_page = int(request.args.get('reports_page', 1))
     except ValueError:
         users_page = 1
         posts_page = 1
         comments_page = 1
+        reports_page = 1
 
     current_tab = request.args.get('tab', 'users')  # Default to 'users' tab
 
@@ -824,10 +826,21 @@ def admin_dashboard():
     # Sort after fetching and scoring
     comments.sort(key=lambda x: x['risk_score'], reverse=True)
 
+
+    reports = []
+
+    # total_reports_count = query_db(
+    #     'SELECT COUNT(*) as count FROM posts', one=True)['count']
+
+    total_reports_count = query_db(
+        'SELECT COUNT(*) as count FROM reports', one=True)['count']
+    total_reports_pages = (total_reports_count + PAGE_SIZE - 1) // PAGE_SIZE
+
     return render_template('admin.html.j2',
                            users=users,
                            posts=posts,
                            comments=comments,
+                           reports=reports,
 
                            # Pagination for Users
                            users_page=users_page,
@@ -849,7 +862,14 @@ def admin_dashboard():
                            comments_has_prev=(comments_page > 1),
 
                            current_tab=current_tab,
-                           PAGE_SIZE=PAGE_SIZE)
+                           PAGE_SIZE=PAGE_SIZE,
+
+                           # Pagination for Reports
+                           reports_page=reports_page,
+                           total_reports_pages=total_reports_pages,
+                           reports_has_next=(reports_page < total_reports_pages),
+                           reports_has_prev=(reports_page > 1),
+                           )
 
 
 @app.route('/admin/delete/user/<int:user_id>', methods=['POST'])
@@ -940,6 +960,8 @@ def recommend(user_id, filter_following):
     - http://www.configworks.com/mz/handout_recsys_sac2010.pdf
     - https://www.researchgate.net/publication/227268858_Recommender_Systems_Handbook
     """
+    # temp use: faster load page for testing
+    return []
 
     # gets the list of post ids that the user has liked
     liked_posts = query_db(
@@ -1070,6 +1092,8 @@ def user_risk_analysis(user_id):
             password: admin
         Then, navigate to the /admin endpoint. (http://localhost:8080/admin)
     """
+    # temp use: faster load page for testing
+    return 0
 
     score = 0
 
@@ -1175,6 +1199,8 @@ def moderate_content(content):
             password: admin
     Then, navigate to the /admin endpoint. (http://localhost:8080/admin)
     """
+    # temp use: faster load page for testing
+    return content, 0
 
     # when there are no content
     if not content:
