@@ -7,10 +7,12 @@ import hashlib
 import re
 from datetime import datetime
 from collections import Counter
+from datetime import datetime
 
 app = Flask(__name__)
 app.secret_key = '123456789'
 DATABASE = 'database.sqlite'
+BLOCK_MESSAGE = "[The content has been blocked by admin]"
 
 # Load censorship data
 # WARNING! The censorship.dat file contains disturbing language when decrypted.
@@ -576,6 +578,81 @@ def delete_comment(comment_id):
     return redirect(request.referrer or url_for('feed'))
 
 
+@app.route('/posts/report/<int:post_id>', methods=['POST'])
+def report_post(post_id):
+    user_id = session.get('user_id')
+
+    # Get content from the submitted form
+    reason = request.form.get('report_content')
+
+    # Block access if user is not logged in
+    if not user_id:
+        flash('You must be logged in to report a comment.', 'danger')
+        return redirect(url_for('login'))
+
+    # If all checks pass, proceed with deletion
+    db = get_db()
+
+    post = query_db('SELECT content FROM posts WHERE id = ?', (post_id,), one=True)
+    if not post:
+        flash('Post not found.', 'danger')
+        return redirect(url_for('feed'))
+
+    post_content = post['content']
+
+    # Get current timestamp
+    now = datetime.now()
+
+    # Insert into reports table
+    db.execute('''
+               INSERT INTO reports (report_content_id, report_user_id, reason, content, status, is_post, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
+           ''', (post_id, user_id, reason, post_content, 'pending', 0, now))
+    db.commit()
+
+    flash('Comment successfully reported.', 'success')
+    # Redirect back to the page the user came from
+    return redirect(request.referrer or url_for('feed'))
+
+
+@app.route('/comments/report/<int:comment_id>', methods=['POST'])
+def report_comment(comment_id):
+    """Handles reporting a comment."""
+    user_id = session.get('user_id')
+
+    # Get content from the submitted form
+    reason = request.form.get('report_content')
+
+    # Block access if user is not logged in
+    if not user_id:
+        flash('You must be logged in to report a comment.', 'danger')
+        return redirect(url_for('login'))
+
+    # If all checks pass, proceed with deletion
+    db = get_db()
+
+    comment = query_db('SELECT content FROM comments WHERE id = ?', (comment_id,), one=True)
+    if not comment:
+        flash('Comment not found.', 'danger')
+        return redirect(url_for('feed'))
+
+    comment_content = comment['content']
+
+    # Get current timestamp
+    now = datetime.now()
+
+    # Insert into reports table
+    db.execute('''
+            INSERT INTO reports (report_content_id, report_user_id, reason, content, status, is_post, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (comment_id, user_id, reason, comment_content, 'pending', 0, now))
+    db.commit()
+
+    flash('Comment successfully deleted.', 'success')
+    # Redirect back to the page the user came from
+    return redirect(request.referrer or url_for('feed'))
+
+
 @app.route('/react', methods=['POST'])
 def add_reaction():
     """Handles adding a new reaction or updating an existing one."""
@@ -744,7 +821,7 @@ def admin_dashboard():
         comments_page = 1
         reports_page = 1
 
-    current_tab = request.args.get('tab', 'users')  # Default to 'users' tab
+    current_tab = request.args.get('tab', 'posts')  # Default to 'users' tab
 
     users_offset = (users_page - 1) * PAGE_SIZE
 
@@ -826,11 +903,45 @@ def admin_dashboard():
     # Sort after fetching and scoring
     comments.sort(key=lambda x: x['risk_score'], reverse=True)
 
+    reports_offset = (reports_page - 1) * PAGE_SIZE
+    reports_raw = query_db(f'''
+        SELECT 
+            r.id,
+            u.username AS reporter_name,
+            r.report_content_id,
+            r.reason AS report_reason,
+            r.content AS report_contents,
+            r.status,
+            r.created_at,
+            r.is_post,
+            CASE 
+                WHEN r.is_post = 1 THEN posts.user_id
+                ELSE comments.user_id
+            END AS reported_user_id,
+            CASE
+                WHEN r.is_post = 1 THEN posts.content
+                ELSE comments.content
+            END AS reported_content
+        FROM reports r
+        JOIN users u ON r.report_user_id = u.id
+        LEFT JOIN posts ON r.is_post = 1 AND r.report_content_id = posts.id
+        LEFT JOIN comments ON r.is_post = 0 AND r.report_content_id = comments.id
+        ORDER BY r.created_at DESC
+        LIMIT ? OFFSET ?
+    ''', (PAGE_SIZE, reports_offset))
 
     reports = []
+    for report in reports_raw:
+        report_dict = dict(report)
+        created_dt = report_dict['created_at']
+        # comment_dict['risk_label'] = risk_label
+        # comment_dict['risk_sort_key'] = risk_sort_key
+        # comment_dict['risk_score'] = round(score, 2)
+        reports.append(report_dict)
 
-    # total_reports_count = query_db(
-    #     'SELECT COUNT(*) as count FROM posts', one=True)['count']
+    # Sort after fetching and scoring
+    # reports.sort(key=lambda x: x['created_at'], reverse=True)
+    reports.sort(key=lambda x: (x['status'] != 'pending', -x['created_at'].timestamp()))
 
     total_reports_count = query_db(
         'SELECT COUNT(*) as count FROM reports', one=True)['count']
@@ -901,6 +1012,55 @@ def admin_delete_post(post_id):
     db.execute('DELETE FROM posts WHERE id = ?', (post_id,))
     db.commit()
     flash(f'Post {post_id} has been deleted.', 'success')
+    return redirect(url_for('admin_dashboard'))
+
+
+@app.route('/admin/block/<int:report_id>', methods=['POST'])
+def admin_block(report_id):
+    if session.get('username') != 'admin':
+        flash("You do not have permission to perform this action.", "danger")
+        return redirect(url_for('feed'))
+
+    db = get_db()
+    # Get the report info
+    report = query_db('SELECT report_content_id, is_post FROM reports WHERE id = ?', (report_id,), one=True)
+
+    if report:
+        content_id = report['report_content_id']
+        is_post = report['is_post']
+
+        if is_post == 1:
+            # Reported item is a post
+            db.execute('UPDATE posts SET content = ? WHERE id = ?',
+                       (BLOCK_MESSAGE, content_id))
+            db.execute('UPDATE reports SET status = ? WHERE id = ?', ('blocked', report_id))
+            flash(f'Post {content_id} has been blocked.', 'success')
+        else:
+            # Reported item is a comment
+            db.execute('UPDATE comments SET content = ? WHERE id = ?',
+                       (BLOCK_MESSAGE, content_id))
+            db.execute('UPDATE reports SET status = ? WHERE id = ?', ('blocked', report_id))
+            flash(f'Comment {content_id} has been blocked.', 'success')
+
+        db.commit()
+
+    return redirect(url_for('admin_dashboard'))
+
+
+@app.route('/admin/reject/<int:report_id>', methods=['POST'])
+def admin_reject_report(report_id):
+    if session.get('username') != 'admin':
+        flash("You do not have permission to perform this action.", "danger")
+        return redirect(url_for('feed'))
+
+    db = get_db()
+    # Get the report info
+    report = query_db('SELECT report_content_id, is_post FROM reports WHERE id = ?', (report_id,), one=True)
+
+    if report:
+        db.execute('UPDATE reports SET status = ? WHERE id = ?', ('rejected', report_id))
+        db.commit()
+
     return redirect(url_for('admin_dashboard'))
 
 
