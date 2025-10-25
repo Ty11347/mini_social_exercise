@@ -641,7 +641,7 @@ def report_comment(comment_id):
         ''', (comment_id, user_id, reason, comment_content, 'pending', 0, now))
     db.commit()
 
-    flash('Comment successfully deleted.', 'success')
+    flash('Comment successfully reported.', 'success')
     # Redirect back to the page the user came from
     return redirect(request.referrer or url_for('feed'))
 
