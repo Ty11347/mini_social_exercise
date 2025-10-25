@@ -603,10 +603,10 @@ def report_post(post_id):
     db.execute('''
                INSERT INTO reports (report_content_id, report_user_id, reason, content, status, is_post, created_at)
                VALUES (?, ?, ?, ?, ?, ?, ?)
-           ''', (post_id, user_id, reason, post_content, 'pending', 0, now))
+           ''', (post_id, user_id, reason, post_content, 'pending', 1, now))
     db.commit()
 
-    flash('Comment successfully reported.', 'success')
+    flash('Post successfully reported.', 'success')
     # Redirect back to the page the user came from
     return redirect(request.referrer or url_for('feed'))
 
