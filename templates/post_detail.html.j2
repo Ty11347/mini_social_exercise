@@ -9,6 +9,7 @@
           <h3 class="card-title mb-0">
             <a href="/u/{{ post.user_id }}">{{ user_display(post.username) }}</a>
           </h3>
+
           {% if session.get('user_id') == post.user_id %}
             <div class="d-flex align-items-center">
               <small class="text-muted me-3">{{ post.created_at|datetimeformat }}</small>
@@ -76,7 +77,8 @@
             <h4 class="mb-0">Comments</h4>
           {% endif %}
           <!-- Add Comment Button (triggers modal) -->
-          <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addCommentModal-{{ post.id }}">
+          <button class="btn btn-primary btn-sm" data-bs-toggle="modal"
+                  data-bs-target="#addCommentModal-{{ post.id }}">
             Add Comment
           </button>
         </div>
@@ -89,16 +91,47 @@
                   <div>
                     <strong><a href="/u/{{ comment.username }}">{{ user_display(comment.username) }}</a></strong>
                     <p class="mb-0">{{ comment.content }}</p>
-
-
-                    {% if session.get('user_id') == comment.user_id or session.get('user_id') == post.user_id %}
-                      <form action="{{ url_for('delete_comment', comment_id=comment.id) }}" method="POST"
-                            onsubmit="return confirm('Are you sure you want to delete this comment?');">
-                        <button type="submit" class="btn btn-sm btn-danger" title="Delete Comment">delete</button>
-                      </form>
-                    {% endif %}
-
                   </div>
+
+                    <div class="ms-auto">
+                      <button class="btn btn-danger btn-sm" data-bs-toggle="modal"
+                              data-bs-target="#reportCommentModal-{{ comment.id }}">⚠
+                      </button>
+                    </div>
+
+                    <div class="modal fade" id="reportCommentModal-{{ comment.id }}" tabindex="-1"
+                         aria-labelledby="reportCommentModalLabel-{{ comment.id }}" aria-hidden="true">
+                      <div class="modal-dialog">
+                        <div class="modal-content">
+                          <div class="modal-header">
+                            <h5 class="modal-title" id="reportCommentModalLabel-{{ comment.id }}">Report a
+                              comment</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                          </div>
+                          <div class="modal-body">
+                            <form action="/comments/report/{{ comment.id }}" method="POST">
+                              <div class="mb-3">
+                                <label for="report-content-{{ comment.id }}" class="form-label">Reason for
+                                  Reporting</label>
+                                <textarea class="form-control" id="comment-content-{{ comment.id }}"
+                                          name="report_content" rows="3"
+                                          required></textarea>
+                              </div>
+                              <button type="submit" class="btn btn-primary">Submit</button>
+                            </form>
+                          </div>
+                        </div>
+                      </div>
+
+
+                      {% if session.get('user_id') == comment.user_id or session.get('user_id') == post.user_id %}
+                        <form action="{{ url_for('delete_comment', comment_id=comment.id) }}" method="POST"
+                              onsubmit="return confirm('Are you sure you want to delete this comment?');">
+                          <button type="submit" class="btn btn-sm btn-danger" title="Delete Comment">delete</button>
+                        </form>
+                      {% endif %}
+
+                    </div>
               </li>
             {% endfor %}
           </ul>
