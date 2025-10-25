@@ -582,7 +582,6 @@ def delete_comment(comment_id):
 def report_post(post_id):
     user_id = session.get('user_id')
 
-    # Get content from the submitted form
     reason = request.form.get('report_content')
 
     # Block access if user is not logged in
@@ -590,7 +589,6 @@ def report_post(post_id):
         flash('You must be logged in to report a comment.', 'danger')
         return redirect(url_for('login'))
 
-    # If all checks pass, proceed with deletion
     db = get_db()
 
     post = query_db('SELECT content FROM posts WHERE id = ?', (post_id,), one=True)
@@ -600,10 +598,8 @@ def report_post(post_id):
 
     post_content = post['content']
 
-    # Get current timestamp
     now = datetime.now()
 
-    # Insert into reports table
     db.execute('''
                INSERT INTO reports (report_content_id, report_user_id, reason, content, status, is_post, created_at)
                VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -620,7 +616,6 @@ def report_comment(comment_id):
     """Handles reporting a comment."""
     user_id = session.get('user_id')
 
-    # Get content from the submitted form
     reason = request.form.get('report_content')
 
     # Block access if user is not logged in
@@ -638,10 +633,8 @@ def report_comment(comment_id):
 
     comment_content = comment['content']
 
-    # Get current timestamp
     now = datetime.now()
 
-    # Insert into reports table
     db.execute('''
             INSERT INTO reports (report_content_id, report_user_id, reason, content, status, is_post, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -933,14 +926,9 @@ def admin_dashboard():
     reports = []
     for report in reports_raw:
         report_dict = dict(report)
-        created_dt = report_dict['created_at']
-        # comment_dict['risk_label'] = risk_label
-        # comment_dict['risk_sort_key'] = risk_sort_key
-        # comment_dict['risk_score'] = round(score, 2)
         reports.append(report_dict)
 
     # Sort after fetching and scoring
-    # reports.sort(key=lambda x: x['created_at'], reverse=True)
     reports.sort(key=lambda x: (x['status'] != 'pending', -x['created_at'].timestamp()))
 
     total_reports_count = query_db(
@@ -1022,7 +1010,6 @@ def admin_block(report_id):
         return redirect(url_for('feed'))
 
     db = get_db()
-    # Get the report info
     report = query_db('SELECT report_content_id, is_post FROM reports WHERE id = ?', (report_id,), one=True)
 
     if report:
@@ -1030,13 +1017,11 @@ def admin_block(report_id):
         is_post = report['is_post']
 
         if is_post == 1:
-            # Reported item is a post
             db.execute('UPDATE posts SET content = ? WHERE id = ?',
                        (BLOCK_MESSAGE, content_id))
             db.execute('UPDATE reports SET status = ? WHERE id = ?', ('blocked', report_id))
             flash(f'Post {content_id} has been blocked.', 'success')
         else:
-            # Reported item is a comment
             db.execute('UPDATE comments SET content = ? WHERE id = ?',
                        (BLOCK_MESSAGE, content_id))
             db.execute('UPDATE reports SET status = ? WHERE id = ?', ('blocked', report_id))
@@ -1054,7 +1039,6 @@ def admin_reject_report(report_id):
         return redirect(url_for('feed'))
 
     db = get_db()
-    # Get the report info
     report = query_db('SELECT report_content_id, is_post FROM reports WHERE id = ?', (report_id,), one=True)
 
     if report:
@@ -1121,7 +1105,7 @@ def recommend(user_id, filter_following):
     - https://www.researchgate.net/publication/227268858_Recommender_Systems_Handbook
     """
     # temp use: faster load page for testing
-    return []
+    # return []
 
     # gets the list of post ids that the user has liked
     liked_posts = query_db(
@@ -1253,7 +1237,7 @@ def user_risk_analysis(user_id):
         Then, navigate to the /admin endpoint. (http://localhost:8080/admin)
     """
     # temp use: faster load page for testing
-    return 0
+    # return 0
 
     score = 0
 
@@ -1360,7 +1344,7 @@ def moderate_content(content):
     Then, navigate to the /admin endpoint. (http://localhost:8080/admin)
     """
     # temp use: faster load page for testing
-    return content, 0
+    # return content, 0
 
     # when there are no content
     if not content:
