@@ -253,10 +253,21 @@
             {% for report in reports %}
               <tr>
                 <td>{{ report.id }}</td>
-                <td><a
-                    href="{{ url_for('user_profile', username=report.reporter_name) }}">{{ report.reporter_name }}</a>
+                <td>
+                  <a href="{{ url_for('user_profile', username=report.reporter_name) }}">{{ report.reporter_name }}</a>
                 </td>
-                <td style="white-space: normal; word-break: break-word;  overflow-wrap: break-word;">{{ report.report_contents }}</td>
+                {% if report.is_post == 1 %}
+                  <td style="white-space: normal; word-break: break-word;  overflow-wrap: break-word;">
+                    <a href="{{ url_for('post_detail', post_id=report.report_content_id) }}">{{ report.report_contents }}</a>
+                  </td>
+                {% else %}
+                  <td style="white-space: normal; word-break: break-word;  overflow-wrap: break-word;">
+                    <a href="{{ url_for('post_detail', post_id=report.post_id) }}">
+                      {{ report.report_contents }}
+                    </a>
+                  </td>
+                {% endif %}
+
                 <td style="white-space: normal; word-break: break-word;  overflow-wrap: break-word;">{{ report.report_reason }}</td>
                 <td>{{ report.created_at|datetimeformat }}</td>
                 <td>{{ report.status }}</td>

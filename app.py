@@ -603,7 +603,7 @@ def report_post(post_id):
     db.execute('''
                INSERT INTO reports (report_content_id, report_user_id, reason, content, status, is_post, created_at)
                VALUES (?, ?, ?, ?, ?, ?, ?)
-           ''', (post_id, user_id, reason, post_content, 'pending', 1, now))
+               ''', (post_id, user_id, reason, post_content, 'pending', 1, now))
     db.commit()
 
     flash('Post successfully reported.', 'success')
@@ -636,9 +636,9 @@ def report_comment(comment_id):
     now = datetime.now()
 
     db.execute('''
-            INSERT INTO reports (report_content_id, report_user_id, reason, content, status, is_post, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (comment_id, user_id, reason, comment_content, 'pending', 0, now))
+               INSERT INTO reports (report_content_id, report_user_id, reason, content, status, is_post, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
+               ''', (comment_id, user_id, reason, comment_content, 'pending', 0, now))
     db.commit()
 
     flash('Comment successfully reported.', 'success')
@@ -927,6 +927,14 @@ def admin_dashboard():
     for report in reports_raw:
         report_dict = dict(report)
         reports.append(report_dict)
+
+    for report in reports:
+        post_row = query_db(
+            'SELECT post_id FROM comments WHERE id = ?',
+            (report['report_content_id'],),
+            one=True
+        )
+        report['post_id'] = post_row['post_id'] if post_row else None
 
     # Sort after fetching and scoring
     reports.sort(key=lambda x: (x['status'] != 'pending', -x['created_at'].timestamp()))
