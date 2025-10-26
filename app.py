@@ -1052,6 +1052,7 @@ def admin_reject_report(report_id):
     if report:
         db.execute('UPDATE reports SET status = ? WHERE id = ?', ('rejected', report_id))
         db.commit()
+        flash(f'Report {report_id} has been rejected.', 'success')
 
     return redirect(url_for('admin_dashboard'))
 
